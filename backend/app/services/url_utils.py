@@ -52,8 +52,8 @@ class URLNormalizer:
             # 3. 스킴 확인 (https 강제)
             scheme = 'https'
             
-            # 4. www 제거
-            netloc = parsed.netloc.replace('www.', '')
+            # 4. www 유지
+            netloc = parsed.netloc
             
             # 5. 도메인 검증
             if cls.ALLOWED_DOMAIN not in netloc:
