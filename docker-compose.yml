@@ -29,11 +29,33 @@ services:
       QUERY_DEFAULTS_LIMIT: 25
       AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
       PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
-      DEFAULT_VECTORIZER_MODULE: 'none'  # 수동 벡터 입력
+      DEFAULT_VECTORIZER_MODULE: 'none'
       ENABLE_MODULES: ''
       CLUSTER_HOSTNAME: 'node1'
     volumes:
       - weaviate_data:/var/lib/weaviate
+
+  # Celery Worker
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: rush_celery_worker
+    command: celery -A celery_app worker --loglevel=info
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017
+      - REDIS_URL=redis://redis:6379/0
+      - WEAVIATE_URL=http://weaviate:8080
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      - redis
+      - mongodb
+      - weaviate
+    volumes:
+      - ./backend:/app
+    restart: unless-stopped
 
 volumes:
   mongodb_data:
