@@ -115,7 +115,7 @@ class ContentExtractor:
             'sections': sections,
             'category': category,
             'word_count': len(main_content.split()),
-            'crawled_at': datetime.utcnow()
+            'crawled_at': datetime.now()
         }
     
     def _extract_with_bs4(self, html: str) -> str:
