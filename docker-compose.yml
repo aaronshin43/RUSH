@@ -23,7 +23,7 @@ services:
     container_name: rush_weaviate
     ports:
       - "8080:8080"
-      - "50051:50051"  # gRPC 포트
+      - "50051:50051"  # gRPC 포트 추가
     environment:
       QUERY_DEFAULTS_LIMIT: 25
       AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
@@ -42,12 +42,12 @@ services:
     container_name: rush_celery_worker
     command: celery -A celery_app worker --loglevel=info
     environment:
-      - MONGODB_URI={$MONGODB_URI}
-      - REDIS_URL={$REDIS_URL}
-      - WEAVIATE_URL={$WEAVIATE_URL}
-      - WEAVIATE_GRPC_PORT={$WEAVIATE_GRPC_PORT}
-      - CELERY_BROKER_URL={$CELERY_BROKER_URL}
-      - CELERY_RESULT_BACKEND={$CELERY_RESULT_BACKEND}
+      - MONGODB_URI=mongodb://mongodb:27017
+      - REDIS_URL=redis://redis:6379/0
+      - WEAVIATE_URL=http://weaviate:8080
+      - WEAVIATE_GRPC_PORT=50051
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       - redis
