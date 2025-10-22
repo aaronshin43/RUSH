@@ -10,7 +10,7 @@ motor==3.7.1
 redis==5.3.1
 
 # Vector DB
-weaviate-client==4.16.10
+weaviate-client==4.17.0
 
 # Celery
 celery==5.4.0
