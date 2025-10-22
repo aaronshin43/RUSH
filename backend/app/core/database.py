@@ -3,6 +3,9 @@ from redis import Redis
 import weaviate
 from weaviate.classes.init import Auth
 from app.core.config import settings
+from urllib.parse import urlparse
+# from weaviate.connect import ConnectionParams
+# from app.core.logger import logger
 
 # MongoDB
 mongodb_client = AsyncIOMotorClient(settings.MONGODB_URI)
@@ -11,12 +14,29 @@ mongodb_db = mongodb_client[settings.MONGODB_DB_NAME]
 # Redis
 redis_client = Redis.from_url(settings.REDIS_URL, decode_responses=True)
 
-# Weaviate V4 Client
-weaviate_client = weaviate.connect_to_local(
-    host="localhost",  # Weaviate 호스트
-    port=8080,         # Weaviate 포트
-    grpc_port=50051,   # gRPC 포트
-)
+# Weaviate
+# 환경 변수 설정
+WEAVIATE_GRPC_PORT = settings.WEAVIATE_GRPC_PORT
+parsed_url = urlparse(settings.WEAVIATE_URL)
+http_host = parsed_url.hostname
+http_port = parsed_url.port
+http_secure = parsed_url.scheme == 'https'
+
+# Weaviate 클라이언트 초기화
+weaviate_client = None
+
+weaviate_client = weaviate.connect_to_custom(
+        http_host=http_host,
+        http_port=http_port,
+        http_secure=http_secure,
+        grpc_host=http_host,
+        grpc_port=WEAVIATE_GRPC_PORT,
+        grpc_secure=False # gRPC에 SSL/TLS를 사용하지 않는 경우
+    )
+
+# 연결 시도
+weaviate_client.connect()
+
 
 async def check_connections():
     """모든 데이터베이스 연결 확인"""
