@@ -31,22 +31,26 @@ def crawl_single_url(self, url: str):
     """단일 URL 크롤링"""
     from app.services.content_extractor import ContentExtractor
     from app.services.crawl_service import CrawlService
-    print("hello")
     logger.info(f"Task: Crawling single URL: {url}")
-    
+
     try:
         # 콘텐츠 추출
         extractor = ContentExtractor()
         result = extractor.crawl_page(url)
-        print("crawled page")
         
         if not result:
-            return {"status": "failed", "url": url}
+            logger.warning(f"Failed to extract content from {url}")
+            return None
         
         # MongoDB 저장
-        print("saving to db..")
         service = CrawlService()
-        doc_id = asyncio.run(service.save_crawl_result(result))
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:  # 'RuntimeError: There is no current event loop...'
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        doc_id = loop.run_until_complete(service.save_crawl_result(result))
         
         return {
             "status": "success",
