@@ -45,6 +45,7 @@ services:
       - MONGODB_URI=mongodb://mongodb:27017
       - REDIS_URL=redis://redis:6379/0
       - WEAVIATE_URL=http://weaviate:8080
+      - WEAVIATE_GRPC_PORT=50051
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - OPENAI_API_KEY=${OPENAI_API_KEY}
