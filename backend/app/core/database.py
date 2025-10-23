@@ -1,4 +1,4 @@
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import MongoClient
 from redis import Redis
 import weaviate
 from weaviate.classes.init import Auth
@@ -7,8 +7,8 @@ from urllib.parse import urlparse
 # from weaviate.connect import ConnectionParams
 # from app.core.logger import logger
 
-# MongoDB
-mongodb_client = AsyncIOMotorClient(settings.MONGODB_URI)
+# MongoDB (동기식)
+mongodb_client = MongoClient(settings.MONGODB_URI)
 mongodb_db = mongodb_client[settings.MONGODB_DB_NAME]
 
 # Redis
@@ -38,13 +38,13 @@ weaviate_client = weaviate.connect_to_custom(
 weaviate_client.connect()
 
 
-async def check_connections():
-    """모든 데이터베이스 연결 확인"""
+def check_connections():
+    """모든 데이터베이스 연결 확인 (동기식)"""
     status = {}
     
     # MongoDB
     try:
-        await mongodb_client.admin.command('ping')
+        mongodb_client.admin.command('ping')
         status['mongodb'] = 'connected'
     except Exception as e:
         status['mongodb'] = f'error: {str(e)}'

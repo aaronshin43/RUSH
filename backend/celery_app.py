@@ -21,6 +21,7 @@ celery_app.conf.update(
     task_track_started=True,
     task_time_limit=7200,  # 2시간 타임아웃
     task_soft_time_limit=6600,  # 1.5시간 소프트 타임아웃
+    broker_connection_retry_on_startup=True  # 시작 시 브로커 연결 재시도 활성화
 )
 
 
@@ -42,15 +43,9 @@ def crawl_single_url(self, url: str):
             logger.warning(f"Failed to extract content from {url}")
             return None
         
-        # MongoDB 저장
+        # MongoDB 저장 (동기식)
         service = CrawlService()
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:  # 'RuntimeError: There is no current event loop...'
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        doc_id = loop.run_until_complete(service.save_crawl_result(result))
+        doc_id = service.save_crawl_result(result)
         
         return {
             "status": "success",
@@ -86,12 +81,12 @@ def full_site_crawl(self, seed_url: str = "https://www.dickinson.edu", max_pages
                 }
             )
             
-            # 10페이지씩 크롤링
-            stats = asyncio.run(service.crawl_and_save(
+            # 10페이지씩 크롤링 (동기식)
+            stats = service.crawl_and_save(
                 seed_url=seed_url,
                 max_pages=10,
                 rate_limit_delay=1.0
-            ))
+            )
         
         # 최종 통계
         final_stats = asyncio.run(service.get_statistics())

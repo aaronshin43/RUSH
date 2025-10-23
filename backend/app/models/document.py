@@ -63,28 +63,28 @@ class DocumentRepository:
     def __init__(self, db):
         self.collection = db.documents
     
-    async def create(self, document: Document) -> str:
-        """문서 생성"""
+    def create(self, document: Document) -> str:
+        """문서 생성 (동기식)"""
         doc_dict = document.model_dump(by_alias=True, exclude={"id"})
-        result = await self.collection.insert_one(doc_dict)
+        result = self.collection.insert_one(doc_dict)
         return str(result.inserted_id)
     
-    async def find_by_url(self, url: str) -> Optional[Document]:
-        """URL로 문서 찾기"""
-        doc = await self.collection.find_one({"normalized_url": url})
+    def find_by_url(self, url: str) -> Optional[Document]:
+        """URL로 문서 찾기 (동기식)"""
+        doc = self.collection.find_one({"normalized_url": url})
         if doc:
             return Document(**doc)
         return None
     
-    async def update_content(
+    def update_content(
         self, 
         url: str, 
         content: str, 
         content_hash: str,
         sections: List[Dict]
     ) -> bool:
-        """콘텐츠 업데이트"""
-        result = await self.collection.update_one(
+        """콘텐츠 업데이트 (동기식)"""
+        result = self.collection.update_one(
             {"normalized_url": url},
             {
                 "$set": {
