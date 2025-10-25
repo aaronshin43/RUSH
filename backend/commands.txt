@@ -1,0 +1,17 @@
+# Start docker
+docker-compose up -d
+
+# Stop docker
+docker-compose down
+
+# Delete Volume (Run after stop docker)
+docker volume rm rush_mongodb_data
+
+# Connect to mongodb
+docker exec -it rush_mongodb mongosh rush_dev
+
+# Get content from db
+db.documents.find({"normalized_url": "https://www.dickinson.edu/"})
+
+# Run FastAPI server
+uvicorn app.main:app --reload
