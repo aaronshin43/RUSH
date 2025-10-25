@@ -57,7 +57,7 @@ class Document(BaseModel):
     )
 
 
-class DocumentRepository:
+class DocumentRepositoryAsync:
     """MongoDB Document 저장소"""
     
     def __init__(self, db):
@@ -91,7 +91,7 @@ class DocumentRepository:
                     "content": content,
                     "content_hash": content_hash,
                     "sections": sections,
-                    "last_updated": datetime.utcnow()
+                    "last_updated": datetime.now()
                 }
             }
         )
@@ -134,4 +134,83 @@ class DocumentRepository:
     async def delete_by_url(self, url: str) -> bool:
         """URL로 문서 삭제"""
         result = await self.collection.delete_one({"normalized_url": url})
+        return result.deleted_count > 0
+
+class DocumentRepository:
+    """MongoDB Document 저장소"""
+    
+    def __init__(self, db):
+        self.collection = db.documents
+    
+    def create(self, document: Document) -> str:
+        """문서 생성"""
+        doc_dict = document.model_dump(by_alias=True, exclude={"id"})
+        result = self.collection.insert_one(doc_dict)
+        return str(result.inserted_id)
+    
+    def find_by_url(self, url: str) -> Optional[Document]:
+        """URL로 문서 찾기"""
+        doc = self.collection.find_one({"normalized_url": url})
+        if doc:
+            return Document(**doc)
+        return None
+    
+    def update_content(
+        self, 
+        url: str, 
+        content: str, 
+        content_hash: str,
+        sections: List[Dict]
+    ) -> bool:
+        """콘텐츠 업데이트"""
+        result = self.collection.update_one(
+            {"normalized_url": url},
+            {
+                "$set": {
+                    "content": content,
+                    "content_hash": content_hash,
+                    "sections": sections,
+                    "last_updated": datetime.now()
+                }
+            }
+        )
+        return result.modified_count > 0
+    
+    def get_all_urls(self) -> List[str]:
+        """모든 문서의 URL 가져오기"""
+        cursor = self.collection.find({}, {"normalized_url": 1})
+        urls = []
+        for doc in cursor:
+            urls.append(doc["normalized_url"])
+        return urls
+    
+    def count(self) -> int:
+        """총 문서 수"""
+        return self.collection.count_documents({})
+    
+    def get_statistics(self) -> Dict:
+        """통계 정보"""
+        pipeline = [
+            {
+                "$group": {
+                    "_id": "$category",
+                    "count": {"$sum": 1},
+                    "total_words": {"$sum": "$word_count"}
+                }
+            }
+        ]
+        
+        stats = {"categories": {}}
+        for doc in self.collection.aggregate(pipeline):
+            stats["categories"][doc["_id"]] = {
+                "count": doc["count"],
+                "total_words": doc["total_words"]
+            }
+        
+        stats["total_documents"] = self.count()
+        return stats
+    
+    def delete_by_url(self, url: str) -> bool:
+        """URL로 문서 삭제"""
+        result = self.collection.delete_one({"normalized_url": url})
         return result.deleted_count > 0

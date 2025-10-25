@@ -1,4 +1,5 @@
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import MongoClient
 from redis import Redis
 import weaviate
 from weaviate.classes.init import Auth
@@ -7,9 +8,13 @@ from urllib.parse import urlparse
 # from weaviate.connect import ConnectionParams
 # from app.core.logger import logger
 
-# MongoDB
-mongodb_client = AsyncIOMotorClient(settings.MONGODB_URI)
-mongodb_db = mongodb_client[settings.MONGODB_DB_NAME]
+# FastAPI용 (비동기)
+mongodb_client_async = AsyncIOMotorClient(settings.MONGODB_URI)
+mongodb_db_async = mongodb_client_async[settings.MONGODB_DB_NAME]
+
+# Celey용 MongoDB (동기)
+mongodb_client_sync = MongoClient(settings.MONGODB_URI)
+mongodb_db_sync = mongodb_client_sync[settings.MONGODB_DB_NAME]
 
 # Redis
 redis_client = Redis.from_url(settings.REDIS_URL, decode_responses=True)
@@ -44,10 +49,17 @@ async def check_connections():
     
     # MongoDB
     try:
-        await mongodb_client.admin.command('ping')
-        status['mongodb'] = 'connected'
+        await mongodb_client_async.admin.command('ping')
+        status['mongodb_async'] = 'connected'
     except Exception as e:
-        status['mongodb'] = f'error: {str(e)}'
+        status['mongodb_async'] = f'error: {str(e)}'
+
+    # MongoDB
+    try:
+        await mongodb_client_sync.admin.command('ping')
+        status['mongodb_sync'] = 'connected'
+    except Exception as e:
+        status['mongodb_sync'] = f'error: {str(e)}'
     
     # Redis
     try:
@@ -70,7 +82,8 @@ async def check_connections():
 def close_connections():
     """데이터베이스 연결 종료"""
     try:
-        mongodb_client.close()
+        mongodb_client_async.close()
+        mongodb_client_sync.close()
         redis_client.close()
         weaviate_client.close()
     except:

@@ -1,6 +1,5 @@
 from celery import Celery
 from celery.schedules import crontab
-import asyncio
 
 from app.core.config import settings
 from app.core.logger import logger
@@ -29,80 +28,94 @@ celery_app.conf.update(
 @celery_app.task(bind=True)
 def crawl_single_url(self, url: str):
     """단일 URL 크롤링"""
-    from app.services.content_extractor import ContentExtractor
     from app.services.crawl_service import CrawlService
+    
     logger.info(f"Task: Crawling single URL: {url}")
 
     try:
-        # 콘텐츠 추출
-        extractor = ContentExtractor()
-        result = extractor.crawl_page(url)
-        
-        if not result:
-            logger.warning(f"Failed to extract content from {url}")
-            return None
-        
-        # MongoDB 저장
         service = CrawlService()
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:  # 'RuntimeError: There is no current event loop...'
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        doc_id = loop.run_until_complete(service.save_crawl_result(result))
+        
+        # crawl_and_save를 max_pages=1로 호출
+        stats = service.crawl_and_save(
+            seed_url=url,
+            max_pages=1,  # 단일 URL만
+            rate_limit_delay=1.0
+        )
+        
+        logger.info(f"Save completed: {stats}")
         
         return {
             "status": "success",
             "url": url,
-            "doc_id": doc_id
+            "stats": stats
         }
     
     except Exception as e:
-        logger.error(f"Task failed for {url}: {e}")
+        logger.error(f"Task failed for {url}: {e}", exc_info=True)
         return {"status": "error", "url": url, "error": str(e)}
 
-
 @celery_app.task(bind=True)
-def full_site_crawl(self, seed_url: str = "https://www.dickinson.edu", max_pages: int = 100):
-    """전체 사이트 크롤링"""
+def crawl_full_site(self, seed_url: str = "https://www.dickinson.edu", max_pages: int = None):
+    """
+    전체 사이트 크롤링 (최대 페이지 제한 옵션)
+    
+    Args:
+        seed_url: 시작 URL
+        max_pages: 최대 크롤링 페이지 수 (None이면 무제한)
+    """
     from app.services.crawl_service import CrawlService
     
-    logger.info(f"Task: Full site crawl starting (max_pages={max_pages})")
+    logger.info(f"Task: Full site crawl starting (seed={seed_url}, max_pages={max_pages or 'unlimited'})")
     
     try:
         service = CrawlService()
         
-        # 진행률 업데이트를 위한 콜백
-        total = max_pages
+        # 진행률 업데이트 콜백
+        crawled_count = [0]  # mutable object to update from callback
         
-        for i in range(0, total, 10):
+        def progress_callback(current, total):
+            crawled_count[0] = current
             self.update_state(
                 state='PROGRESS',
                 meta={
-                    'current': min(i + 10, total),
-                    'total': total,
-                    'status': f'Crawling pages {i}-{i+10}...'
+                    'current': current,
+                    'total': total or 'unknown',
+                    'status': f'Crawling page {current}{"/" + str(total) if total else ""}...',
+                    'percentage': int((current / total) * 100) if total else None
                 }
             )
-            
-            # 10페이지씩 크롤링
-            stats = asyncio.run(service.crawl_and_save(
+        
+        # 전체 사이트 크롤링 (max_pages가 있으면 제한)
+        if max_pages:
+            # 최대 페이지 수 제한
+            stats = service.crawl_and_save(
                 seed_url=seed_url,
-                max_pages=10,
-                rate_limit_delay=1.0
-            ))
+                max_pages=max_pages,
+                rate_limit_delay=1.0,
+                progress_callback=progress_callback
+            )
+            logger.info(f"Full site crawl completed with limit: {max_pages} pages")
+        else:
+            # 무제한 크롤링 (사이트 전체)
+            stats = service.crawl_and_save(
+                seed_url=seed_url,
+                max_pages=10000,  # 매우 큰 숫자 (실질적 무제한)
+                rate_limit_delay=1.0,
+                progress_callback=progress_callback
+            )
+            logger.info(f"Full site crawl completed: crawled {crawled_count[0]} pages")
         
         # 최종 통계
-        final_stats = asyncio.run(service.get_statistics())
+        final_stats = service.get_statistics()
         
         return {
             "status": "completed",
-            "stats": final_stats
+            "crawl_stats": stats,
+            "db_stats": final_stats
         }
     
     except Exception as e:
-        logger.error(f"Full site crawl failed: {e}")
+        logger.error(f"Full site crawl failed: {e}", exc_info=True)
         self.update_state(
             state='FAILURE',
             meta={'error': str(e)}
@@ -124,7 +137,7 @@ def incremental_update(self, priority: str = "high"):
         extractor = ContentExtractor()
         
         # 모든 URL 가져오기
-        all_urls = asyncio.run(service.repo.get_all_urls())
+        all_urls = service.repo.get_all_urls()
         
         # TODO: 우선순위 필터링 구현
         # 지금은 모든 URL 체크
@@ -148,7 +161,7 @@ def incremental_update(self, priority: str = "high"):
             )
             
             # 기존 문서 가져오기
-            existing = asyncio.run(service.repo.find_by_url(url))
+            existing = service.repo.find_by_url(url)
             if not existing:
                 continue
             
@@ -160,7 +173,7 @@ def incremental_update(self, priority: str = "high"):
             
             # 변경 감지
             if has_content_changed(existing.content_hash, new_data['content']):
-                asyncio.run(service.save_crawl_result(new_data))
+                service.save_crawl_result(new_data)
                 updated_count += 1
                 logger.info(f"Updated: {url}")
             else:

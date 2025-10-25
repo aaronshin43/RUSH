@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel, HttpUrl
 from typing import Optional
 
-from celery_app import crawl_single_url, full_site_crawl, incremental_update, celery_app
+from celery_app import crawl_single_url, crawl_full_site, incremental_update, celery_app
 from app.core.logger import logger
 
 router = APIRouter(prefix="/api/crawl", tags=["crawl"])
@@ -42,12 +42,11 @@ async def crawl_single(request: CrawlURLRequest):
         logger.error(f"Failed to start crawl task: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.post("/full")
 async def start_full_crawl(request: FullCrawlRequest):
     """전체 사이트 크롤링 시작"""
     try:
-        task = full_site_crawl.delay(
+        task = crawl_full_site.delay(
             seed_url=str(request.seed_url),
             max_pages=request.max_pages
         )
