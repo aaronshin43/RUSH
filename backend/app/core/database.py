@@ -47,16 +47,16 @@ async def check_connections():
     """모든 데이터베이스 연결 확인"""
     status = {}
     
-    # MongoDB
+    # MongoDB async
     try:
         await mongodb_client_async.admin.command('ping')
         status['mongodb_async'] = 'connected'
     except Exception as e:
         status['mongodb_async'] = f'error: {str(e)}'
 
-    # MongoDB
+    # MongoDB sync
     try:
-        await mongodb_client_sync.admin.command('ping')
+        mongodb_client_sync.admin.command('ping')
         status['mongodb_sync'] = 'connected'
     except Exception as e:
         status['mongodb_sync'] = f'error: {str(e)}'
