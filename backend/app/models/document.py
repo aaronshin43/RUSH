@@ -29,7 +29,6 @@ class Section(BaseModel):
     """섹션 구조"""
     level: str
     title: str
-    content: str
     
     model_config = ConfigDict(from_attributes=True)
 

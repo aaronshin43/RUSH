@@ -157,27 +157,22 @@ class ContentExtractor:
         return "Untitled"
     
     def _extract_sections(self, soup: BeautifulSoup) -> List[Dict]:
-        """섹션 구조 추출 (헤더 기반)"""
+        """
+        섹션 구조 추출 (헤더 기반 - 메타데이터만)
+        
+        Note: 섹션 내용은 main_content에 이미 포함되므로 중복 저장 방지
+              메타데이터만 추출하여 청킹 시 활용
+        """
         sections = []
         
         for heading in soup.find_all(['h1', 'h2', 'h3']):
             section_title = heading.get_text(strip=True)
             
-            # 다음 헤딩까지의 콘텐츠 수집
-            content_parts = []
-            for sibling in heading.find_next_siblings():
-                if sibling.name in ['h1', 'h2', 'h3']:
-                    break
-                if sibling.name in ['p', 'ul', 'ol', 'div']:
-                    text = sibling.get_text(strip=True)
-                    if text:
-                        content_parts.append(text)
-            
-            if content_parts:
+            # 빈 제목 무시
+            if section_title:
                 sections.append({
                     'level': heading.name,
-                    'title': section_title,
-                    'content': '\n'.join(content_parts)
+                    'title': section_title
                 })
         
         return sections
