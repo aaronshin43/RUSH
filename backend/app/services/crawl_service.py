@@ -64,6 +64,7 @@ class CrawlService:
                 content_hash=crawl_data['content_hash'],
                 sections=sections,
                 word_count=crawl_data['word_count'],
+                priority=crawl_data['priority'],
                 crawled_at=crawl_data['crawled_at'],
                 status="active"
             )
