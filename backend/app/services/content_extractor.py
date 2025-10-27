@@ -105,6 +105,9 @@ class ContentExtractor:
         
         # 카테고리 추측 (URL 기반)
         category = self._guess_category(url)
+
+        # 우선순위 추측 (URL 기반)
+        priority = self._determine_priority(url, category)
         
         # 결과 반환
         return {
@@ -115,6 +118,7 @@ class ContentExtractor:
             'sections': sections,
             'category': category,
             'word_count': len(main_content.split()),
+            'priority': priority,
             'crawled_at': datetime.now()
         }
     
@@ -223,7 +227,69 @@ class ContentExtractor:
         except Exception as e:
             logger.error(f"✗ Extraction failed for {url}: {e}")
             return None
-
+    
+    def _determine_priority(self, url: str, category: str) -> str:
+        """URL과 카테고리 기반 우선순위 결정"""
+        url_lower = url.lower()
+        
+        # URL 깊이 계산 (도메인 제외)
+        from urllib.parse import urlparse
+        path = urlparse(url).path.strip('/')
+        depth = len([p for p in path.split('/') if p])  # 빈 문자열 제외
+        
+        # ==================== High Priority ====================
+        
+        # 1. 루트 레벨 뉴스/이벤트 페이지 (depth 0-1)
+        if depth <= 1 and any(keyword in url_lower for keyword in [
+            '/events', '/news', '/announcements', '/calendar'
+        ]):
+            return 'high'
+        
+        # 2. 중요 카테고리의 인덱스/목록 페이지
+        if any(pattern in url_lower for pattern in [
+            '/news',
+            '/events',
+            '/admissions/apply',
+            '/admissions/deadlines',
+            '/calendar',
+        ]):
+            # 하지만 개별 아티클은 제외
+            if not any(keyword in url_lower for keyword in [
+                '/article', '/event', '/story'
+            ]):
+                return 'high'
+        
+        # ==================== Low Priority ====================
+        
+        # 3. 개별 뉴스 기사/이벤트 (depth 3+)
+        if depth >= 3 and any(keyword in url_lower for keyword in [
+            '/news/article', 
+            '/events/event',
+            '/story',
+            '/blog/post'
+        ]):
+            return 'low'
+        
+        # 4. 정적 페이지
+        if any(keyword in url_lower for keyword in [
+            '/about', '/history', '/mission', '/contact'
+        ]):
+            return 'low'
+        
+        # 5. 오래된 아카이브
+        if any(keyword in url_lower for keyword in [
+            '/archive', '/past-events'
+        ]):
+            return 'low'
+        
+        # ==================== Medium Priority ====================
+        
+        # 6. 학과/프로그램 페이지
+        if category in ['academics', 'admissions', 'campus_life']:
+            return 'medium'
+        
+        # 기본값
+        return 'medium'
 
 # 테스트 코드
 if __name__ == "__main__":
