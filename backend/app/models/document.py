@@ -36,15 +36,16 @@ class Section(BaseModel):
 class Document(BaseModel):
     """크롤링된 문서 모델"""
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
-    url: str
-    normalized_url: str
-    title: str
-    category: str
-    content: str
-    content_hash: str
-    sections: List[Section] = []
-    word_count: int
-    crawled_at: datetime
+    url: str = Field(..., description="Page URL")
+    normalized_url: str = Field(..., description="Normalized URL")
+    title: str = Field(..., description="Page title")
+    category: str = Field(..., description="Page category")
+    content: str = Field(..., description="Body text")
+    content_hash: str = Field(..., description="Content hash (SHA256)")
+    sections: List[Section] = Field(default_factory=list, description="Section structure")
+    word_count: int = Field(default=0, description="Number of words")
+    priority: str = Field(default="medium", description="Update Priority (high/medium/low)")
+    crawled_at: datetime = Field(default_factory=datetime.now)
     last_updated: Optional[datetime] = None
     status: str = "active"  # active, inactive, error
     
@@ -98,11 +99,19 @@ class DocumentRepositoryAsync:
     
     async def get_all_urls(self) -> List[str]:
         """모든 문서의 URL 가져오기"""
-        cursor = self.collection.find({}, {"normalized_url": 1})
+        cursor = await self.collection.find({}, {"normalized_url": 1})
         urls = []
         async for doc in cursor:
             urls.append(doc["normalized_url"])
         return urls
+    
+    async def get_urls_by_priority(self, priority: str) -> List[str]:
+        """우선순위별 URL 목록 가져오기"""
+        documents = await self.collection.find(
+            {'priority': priority},
+            {'url': 1, '_id': 0}
+        )
+        return [doc['url'] async for doc in documents]
     
     async def count(self) -> int:
         """총 문서 수"""
@@ -182,6 +191,14 @@ class DocumentRepository:
         for doc in cursor:
             urls.append(doc["normalized_url"])
         return urls
+    
+    def get_urls_by_priority(self, priority: str) -> List[str]:
+        """우선순위별 URL 목록 가져오기"""
+        documents = self.collection.find(
+            {'priority': priority},
+            {'url': 1, '_id': 0}
+        )
+        return [doc['url'] for doc in documents]
     
     def count(self) -> int:
         """총 문서 수"""
