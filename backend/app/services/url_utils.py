@@ -24,6 +24,7 @@ class URLNormalizer:
         r'\.svg$',
         r'\.mp4$',
         r'\.mp3$',
+        r'directory',
     ]
     
     # 제거할 쿼리 파라미터 (추적 파라미터)
