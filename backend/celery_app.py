@@ -136,19 +136,16 @@ def incremental_update(self, priority: str = "high"):
         service = CrawlService()
         extractor = ContentExtractor()
         
-        # 모든 URL 가져오기
-        all_urls = service.repo.get_all_urls()
-        
-        # TODO: 우선순위 필터링 구현
-        # 지금은 모든 URL 체크
+        # 우선순위 필터링
+        urls = service.repo.get_urls_by_priority()
         
         updated_count = 0
         unchanged_count = 0
         failed_count = 0
         
-        total = len(all_urls)
+        total = len(urls)
         
-        for i, url in enumerate(all_urls):
+        for i, url in enumerate(urls):
             # 진행률 업데이트
             self.update_state(
                 state='PROGRESS',
