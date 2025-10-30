@@ -1,0 +1,74 @@
+High Priority (매일 업데이트)
+================================
+/news                          # 뉴스 메인 페이지
+/announcements                 # 공지사항 목록
+/events                        # 이벤트 목록
+/apply                         # 지원 페이지
+/deadlines                     # 마감일
+/visit                         # 캠퍼스 투어 예약
+
+# 외부 도메인
+dickinson.nutrislice.com       # 식당 메뉴
+
+Static Priority (수동/연1회)
+================================
+# 개별 아티클
+/news/article/                 # 개별 뉴스 기사
+/events/event/                 # 개별 이벤트
+
+# 키워드 기반
+stories                        # /stories/ 또는 /path/stories/
+archive                        # /archive/ 또는 /news/archive/
+newsletter                     # /newsletter/
+
+# 특정 페이지
+/dc_faculty_profile            # 교수 프로필
+/campusphotogallery            # 사진 갤러리
+
+# 과거 콘텐츠 (정규표현식)
+/*/*/20[0-2][0-4]/*            # 2000-2024년
+/*/*/19[0-9][0-9]/*            # 1900-1999년
+
+# 서브도메인
+archives.dickinson.edu         # 아카이브 서브도메인
+
+Low Priority (매주 업데이트 - 나머지 모든 페이지)
+================================
+# - 학과/프로그램 (/academics, /courses, /majors)
+# - 학생 생활 (/campus-life, /housing, /dining, /clubs)
+# - 도서관/리소스 (/library, /resources)
+# - 입학 정보 일반 (/admissions/*, /financial-aid, /scholarships)
+# - 시설/교통 (/facilities, /parking, /transportation)
+# - 연구/인턴십 (/research, /internships, /study-abroad)
+# - About/정책 (/about, /mission, /contact, /policies, /faq)
+
+# 외부 도메인
+dickinson.campuslabs.com       # 동아리 정보
+
+Exclude (크롤링 제외)
+=====================
+# 외부 도메인 (화이트리스트 제외)
+*.zoom.us
+*.google.com
+*.microsoft.com
+
+# 검색/동적 페이지
+/site/scripts/google_results.php
+/search?*
+?query=*
+#gsc.tab=*
+#gsc.q=*
+
+# 시스템 페이지
+/login
+/signin
+/gateway
+/404
+/error
+
+# 파일 다운로드
+*.pdf
+*.doc, *.docx
+*.xls, *.xlsx
+*.ppt, *.pptx
+*.zip, *.rar

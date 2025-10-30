@@ -15,3 +15,6 @@ db.documents.find({"normalized_url": "https://www.dickinson.edu/"})
 
 # Run FastAPI server
 uvicorn app.main:app --reload
+
+# Run Specific Python file
+python -m app.[path].[filenamewithout.py]

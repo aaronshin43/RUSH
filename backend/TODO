@@ -2,10 +2,10 @@
     - 
 - 우선순위 필터링 조정 (static 추가, url 검사 고도화)
     High (매일)
-    Medium (매주)
-    Low (매월)
+    Low (매주)
     Static (수동/연 1회)
 - 블랙리스트, 화이트리스트 조정
+- 사이드바 추출 x (comment 사용? END CONTENT)
 - 동적 페이지 크롤링 구현
 - Redis에 hash값 저장 코드 구현
 - 청킹 코드 구현
