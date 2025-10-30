@@ -6,6 +6,9 @@ from urllib3.util.retry import Retry
 from bs4 import BeautifulSoup
 from trafilatura import extract
 from trafilatura.settings import use_config
+from urllib.parse import urlparse, parse_qs
+import re
+import base64
 
 from app.core.logger import logger
 from app.services.hash_utils import compute_content_hash
@@ -182,25 +185,235 @@ class ContentExtractor:
         return sections
     
     def _guess_category(self, url: str) -> str:
-        """URL에서 카테고리 추측"""
-        url_lower = url.lower()
+        """
+        URL에서 카테고리 추측
         
-        if '/academics' in url_lower:
-            return 'academics'
-        elif '/admissions' in url_lower:
-            return 'admissions'
-        elif '/campus-life' in url_lower or '/student-life' in url_lower:
-            return 'campus_life'
-        elif '/about' in url_lower:
-            return 'about'
-        elif '/news' in url_lower:
-            return 'news'
-        elif '/events' in url_lower:
-            return 'events'
-        elif '/athletics' in url_lower or '/sports' in url_lower:
-            return 'athletics'
-        else:
+        기본 카테고리를 먼저 확인하고, 
+        'general'로 분류될 경우에만 대분류 레벨로 그룹화
+        """
+        
+        # ==================== 0단계: URL 파싱 ====================
+        try:
+            parsed_url = urlparse(url)
+            host = parsed_url.netloc.lower()
+            path = parsed_url.path.lower()
+        except Exception:
             return 'general'
+        
+        # ==================== 1단계: 기본 카테고리 체크 (경로 기반) ====================
+        if '/academics' in path:
+            return 'academics'
+        elif '/admissions' in path:
+            return 'admissions'
+        elif '/campus-life' in path or '/student-life' in path:
+            return 'campus_life'
+        elif '/about' in path:
+            return 'about'
+        elif '/news' in path:
+            return 'news'
+        elif '/events' in path:
+            return 'events'
+        elif '/athletics' in path or '/sports' in path:
+            return 'athletics'
+        
+        # ==================== 2단계: general 대분류 그룹화 ====================
+        
+        # 서브도메인 체크 (간소화)
+        if 'admissions.' in host:
+            return 'admissions'
+        
+        if 'athletics.' in host:
+            return 'athletics'
+            
+        if 'jobs.' in host:
+            return 'general_careers'
+
+        if 'campusstore.' in host:
+            return 'general_campus_store'
+
+        # 경로 분석
+        path_parts = [p for p in path.split('/') if p]
+        if not path_parts:
+            return 'general'
+
+        # ID 기반 경로에서 키워드 추출 후 매핑
+        # 패턴 1: /homepage/{id}/{keyword}
+        match_homepage = re.search(r'/homepage/(\d+)/([\w-]+)', path)
+        if match_homepage:
+            keyword = match_homepage.group(2).replace('-', '_')
+            return self._map_to_major_category(keyword)
+
+        # 패턴 2: /info/{id}/{category}/...
+        match_info = re.search(r'/info/(\d+)/([\w_-]+)', path)
+        if match_info:
+            keyword = match_info.group(2).replace('-', '_')
+            return self._map_to_major_category(keyword)
+
+        # 첫 번째 경로 세그먼트 기반
+        main_segment = path_parts[0].replace('-', '_')
+        return self._map_to_major_category(main_segment)
+
+    def _map_to_major_category(self, keyword: str) -> str:
+        """
+        키워드를 주요 대분류 카테고리로 매핑
+        노이즈 단어를 제거하고 핵심 의미만 추출
+        """
+        
+        # ==================== 노이즈 단어 제거 ====================
+        noise_words = [
+            # 조직 관련
+            'office', 'offices', 'department', 'departments', 'division',
+            'unit', 'bureau', 'agency',
+            
+            # 서비스/프로그램 관련
+            'services', 'service', 'program', 'programs', 'initiative', 'initiatives',
+            
+            # 장소 관련
+            'center', 'centers', 'centre', 'centres'
+            
+            # 일반 단어
+            'of', 'the', 'and', 'for', 'page', 'site', 'website',
+            'information', 'info', 'resources', 'resource',
+            
+            # 학교 관련
+            'college', 'university', 'dickinson',
+            
+            # 설명 단어
+            'overview', 'about', 'welcome', 'home', 'homepage',
+            'main', 'general', 'quick', 'facts', 'fact'
+        ]
+        
+        # 키워드 정규화: 소문자 변환 및 노이즈 제거
+        keyword_cleaned = keyword.lower()
+        
+        # 정확한 단어 경계로 제거 (부분 매칭 방지)
+        for noise in noise_words:
+            # 단어 경계에서만 제거
+            keyword_cleaned = re.sub(rf'\b{noise}\b', '', keyword_cleaned)
+        
+        # 중복 언더스코어 제거 및 정리
+        keyword_cleaned = re.sub(r'_+', '_', keyword_cleaned).strip('_')
+        
+        # 빈 문자열이면 general
+        if not keyword_cleaned:
+            return 'general'
+        
+        # ==================== 카테고리 매핑 ====================
+        
+        # 이벤트/캘린더 관련
+        if any(kw in keyword_cleaned for kw in [
+            'event', 'calendar', 'schedule', 'commencement', 'graduation',
+            'ceremony', 'celebration', 'festival', 'conference'
+        ]):
+            return 'events'
+        
+        # 뉴스/미디어/커뮤니케이션 관련
+        if any(kw in keyword_cleaned for kw in [
+            'news', 'article', 'magazine', 'publication', 'announcement',
+            'media', 'press', 'release', 'story', 'communication',
+            'wdcvfm', 'radio', 'limestone', 'broadcast', 'dickinsonmag'
+        ]):
+            return 'news'
+
+        # 학업 관련
+        if any(kw in keyword_cleaned for kw in [
+            'academic', 'faculty', 'research', 'registrar', 'advising', 'advisor',
+            'education', 'abroad', 'global', 'international', 'writing', 'seminar',
+            'bulletin', 'learning', 'teaching', 'curriculum', 'course',
+            'research', 'institute', 'lab', 'laboratory', 'study', 'studies'
+        ]):
+            return 'academics'
+        
+        # 입학 관련
+        if any(kw in keyword_cleaned for kw in [
+            'admission', 'apply', 'application', 'applicant', 'prospective',
+            'visit', 'tour', 'guide', 'transfer', 'deadline', 'admitted',
+            'decision', 'early', 'regular', 'requirement', 'checklist'
+        ]):
+            return 'admissions'
+        
+        # 학생 생활 관련
+        if any(kw in keyword_cleaned for kw in [
+            'student', 'campus', 'living', 'housing', 'residential', 'residence',
+            'dining', 'meal', 'wellness', 'health', 'counseling', 'counselor',
+            'disability', 'lgbtq', 'religious', 'religion', 'senate',
+            'leadership', 'leader', 'intramural', 'recreation', 'rec',
+            'tradition', 'orientation', 'dean', 'greek', 'fraternity', 'sorority',
+            'building', 'hall', 'life_at_dickinson', 'daily_menus', 'policies', 'asbell_center'
+        ]):
+            return 'campus_life'
+        
+        # 재정 지원 관련
+        if any(kw in keyword_cleaned for kw in [
+            'financial', 'aid', 'scholarship', 'grant', 'tuition', 'fee',
+            'cost', 'cashier', 'payment', 'billing', 'account', 'bursar'
+        ]):
+            return 'general_financial'
+        
+        # 커리어/동문 관련
+        if any(kw in keyword_cleaned for kw in [
+            'career', 'alumni', 'alumnus', 'alumnae', 'job', 'employment',
+            'internship', 'extern', 'homecoming', 'reunion', 'network',
+            'notable', 'graduate'
+        ]):
+            return 'general_alumni_careers'
+
+        # 시설/서비스/안전 관련
+        if any(kw in keyword_cleaned for kw in [
+            'facilities', 'facility', 'library', 'libraries', 'technology', 'tech',
+            'it', 'mail', 'postal', 'print', 'printing', 'safety', 'security',
+            'parking', 'transportation', 'public', 'police', 'emergency'
+        ]):
+            return 'general_facilities'
+        
+        # 기부/지원/발전 관련
+        if any(kw in keyword_cleaned for kw in [
+            'give', 'giving', 'donate', 'donation', 'donor', 'gift',
+            'fund', 'endowment', 'advancement', 'development', 'annual',
+            'matching', 'match', 'volunteer', 'philanthropy', 'support',
+            'ira', 'planned', 'estate', 'legacy', 'corporate', 'foundation',
+            'rog', 'thank_you', 'change'
+        ]):
+            return 'general_giving'
+        
+        # 커뮤니티/다양성/참여 관련
+        if any(kw in keyword_cleaned for kw in [
+            'community', 'civic', 'sustainability', 'sustainable', 'environment',
+            'allarm', 'conflict', 'resolution', 'prevention', 'respect',
+            'diversity', 'diverse', 'inclusion', 'inclusive', 'equity', 'equitable',
+            'engagement', 'engage', 'multicultural', 'intercultural'
+        ]):
+            return 'general_community'
+        
+        # 학부모/가족 관련
+        if any(kw in keyword_cleaned for kw in [
+            'parent', 'parents', 'family', 'families', 'guardian'
+        ]):
+            return 'general_parents'
+        
+        # 예술/문화 관련
+        if any(kw in keyword_cleaned for kw in [
+            'art', 'arts', 'gallery', 'museum', 'exhibit', 'exhibition',
+            'theater', 'theatre', 'music', 'musical', 'performance',
+            'performing', 'dance', 'drama', 'visual', 'coa'
+        ]):
+            return 'general_arts'
+        
+        # 행정/운영 관련
+        if any(kw in keyword_cleaned for kw in [
+            'administrative', 'administration', 'hr', 'human', 'payroll',
+            'business', 'operations', 'operational', 'management', 'policy'
+        ]):
+            return 'general_administrative'
+        
+        # 캠퍼스 스토어 관련
+        if any(kw in keyword_cleaned for kw in [
+            'store', 'shop', 'bookstore', 'merchandise', 'apparel', 'gear'
+        ]):
+            return 'general_campus_store'
+        
+        # 최종 fallback
+        return 'general'    
     
     def crawl_page(self, url: str) -> Optional[Dict]:
         """
