@@ -229,89 +229,208 @@ class ContentExtractor:
             return None
     
     def _determine_priority(self, url: str, category: str) -> str:
-        """URL과 카테고리 기반 우선순위 결정"""
+        """
+        URL 기반 우선순위 결정 (3단계: high/low/static)
+        
+        priority.txt 기준:
+        - High: 매일 업데이트 (뉴스, 이벤트, 공지)
+        - Low: 매주 업데이트 (기본값)
+        - Static: 분기별/수동 (아카이브, 개별 기사, 프로필)
+        
+        Returns:
+            'high' | 'low' | 'static'
+        """
+        from urllib.parse import urlparse
+        import re
+        
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower()
+        path = parsed.path.strip('/')
         url_lower = url.lower()
         
-        # URL 깊이 계산 (도메인 제외)
-        from urllib.parse import urlparse
-        path = urlparse(url).path.strip('/')
-        depth = len([p for p in path.split('/') if p])  # 빈 문자열 제외
+        segments = [s for s in path.split('/') if s]
+        depth = len(segments)
         
-        # ==================== High Priority ====================
+        # ==================== 외부 도메인 처리 ====================
         
-        # 1. 루트 레벨 뉴스/이벤트 페이지 (depth 0-1)
-        if depth <= 1 and any(keyword in url_lower for keyword in [
-            '/events', '/news', '/announcements', '/calendar'
-        ]):
-            return 'high'
+        if "dickinson.edu" not in domain:
+            # nutrislice (식당 메뉴) - 매일 변경
+            if 'nutrislice.com' in domain:
+                return 'high'
+            # campuslabs (동아리 정보) - 매주 업데이트
+            elif 'campuslabs.com' in domain:
+                return 'low'
+            # 기타 외부 도메인은 Low
+            else:
+                return 'low'
         
-        # 2. 중요 카테고리의 인덱스/목록 페이지
-        if any(pattern in url_lower for pattern in [
-            '/news',
-            '/events',
-            '/admissions/apply',
-            '/admissions/deadlines',
-            '/calendar',
-        ]):
-            # 하지만 개별 아티클은 제외
-            if not any(keyword in url_lower for keyword in [
-                '/article', '/event', '/story'
-            ]):
+        # ==================== 서브도메인 처리 ====================
+        
+        if domain != "www.dickinson.edu":
+            # archives 서브도메인
+            if 'archives' in domain:
+                return 'static'
+            # 기타 서브도메인
+            else:
+                return 'low'
+        
+        # ==================== High Priority (매일) ====================
+        
+        # 1. 루트 레벨 중요 페이지 (depth 0-1)
+        if depth <= 1:
+            if any(seg in segments for seg in ['news', 'announcements', 'events']):
                 return 'high'
         
-        # ==================== Low Priority ====================
+        # 2. 뉴스/이벤트 메인 및 카테고리 페이지
+        if depth >= 1 and segments[0] in ['news', 'events', 'announcements']:
+            if depth == 1:
+                # /news/, /events/ (메인 페이지)
+                return 'high'
+            if depth == 2 and segments[1] not in ['article', 'event', 'story', 'archive']:
+                # /news/category/, /events/upcoming/ (카테고리 페이지)
+                return 'high'
         
-        # 3. 개별 뉴스 기사/이벤트 (depth 3+)
-        if depth >= 3 and any(keyword in url_lower for keyword in [
-            '/news/article', 
-            '/events/event',
-            '/story',
-            '/blog/post'
-        ]):
-            return 'low'
+        # 3. 입학 중요 페이지
+        if depth >= 2 and segments[0] == 'admissions':
+            if segments[1] in ['apply', 'deadlines', 'visit']:
+                return 'high'
         
-        # 4. 정적 페이지
-        if any(keyword in url_lower for keyword in [
-            '/about', '/history', '/mission', '/contact'
-        ]):
-            return 'low'
+        # ==================== Static Priority (분기별/수동) ====================
         
-        # 5. 오래된 아카이브
-        if any(keyword in url_lower for keyword in [
-            '/archive', '/past-events'
-        ]):
-            return 'low'
+        # 1. 개별 아티클 (depth 3+)
+        if depth >= 3:
+            if segments[0] in ['news', 'events']:
+                if segments[1] in ['article', 'event', 'story']:
+                    return 'static'
         
-        # ==================== Medium Priority ====================
+        # 2. 키워드 기반 (세그먼트 매칭)
+        if any(keyword in segments for keyword in ['stories', 'archive', 'newsletter']):
+            return 'static'
         
-        # 6. 학과/프로그램 페이지
-        if category in ['academics', 'admissions', 'campus_life']:
-            return 'medium'
+        # 3. 특정 페이지 (URL 전체 매칭)
+        if '/dc_faculty_profile' in url_lower or '/campusphotogallery' in url_lower:
+            return 'static'
         
-        # 기본값
-        return 'medium'
+        # 4. 과거 년도 콘텐츠 (ID 패턴 제외)
+        # /info/ID 또는 /homepage/ID 패턴이 아닌 경우만 체크
+        is_id_pattern = False
+        if depth >= 2:
+            if segments[0] in ['info', 'homepage'] and segments[1].isdigit():
+                is_id_pattern = True
+        
+        if not is_id_pattern:
+            # 4자리 년도 찾기 (1900-2024)
+            year_match = re.search(r'/(\d{4})/', f'/{path}/')
+            if year_match:
+                year = int(year_match.group(1))
+                current_year = datetime.now().year
+                
+                # 1900-2024년 사이이고 현재 년도 이전
+                if 1900 <= year <= 2024 and year < current_year:
+                    return 'static'
+        
+        # ==================== Low Priority (매주 - 기본값) ====================
+        
+        # 나머지 모든 페이지:
+        # - 학과/프로그램 (/academics, /courses, /majors)
+        # - 학생 생활 (/campus-life, /housing, /dining, /clubs)
+        # - 도서관/리소스 (/library, /resources)
+        # - 입학 정보 일반 (/admissions/*, /financial-aid, /scholarships)
+        # - 시설/교통 (/facilities, /parking, /transportation)
+        # - 연구/인턴십 (/research, /internships, /study-abroad)
+        # - About/정책 (/about, /mission, /contact, /policies, /faq)
+        
+        return 'low'
 
 # 테스트 코드
 if __name__ == "__main__":
     extractor = ContentExtractor()
     
-    # 테스트 URL
-    test_url = "https://www.dickinson.edu/info/20103/computer_science/4051/computer_science_department_hours"
+    # # 테스트 URL
+    # test_url = "https://www.dickinson.edu/info/20103/computer_science/4051/computer_science_department_hours"
     
-    result = extractor.crawl_page(test_url)
+    # result = extractor.crawl_page(test_url)
     
-    if result:
-        print(f"\n{'='*60}")
-        print(f"URL: {result['url']}")
-        print(f"Title: {result['title']}")
-        print(f"Category: {result['category']}")
-        print(f"Word Count: {result['word_count']}")
-        print(f"Content Hash: {result['content_hash'][:16]}...")
-        print(f"Sections: {len(result['sections'])}")
-        print(f"\nContent:")
-        print(result['content'])
-        print(f"\nSections:")
-        for i, section in enumerate(result['sections'][:3], 1):
-            print(f"  {i}. [{section['level']}] {section['title']}")
-    else:
-        print("Crawling failed!")
+    # if result:
+    #     print(f"\n{'='*60}")
+    #     print(f"URL: {result['url']}")
+    #     print(f"Title: {result['title']}")
+    #     print(f"Category: {result['category']}")
+    #     print(f"Word Count: {result['word_count']}")
+    #     print(f"Content Hash: {result['content_hash'][:16]}...")
+    #     print(f"Sections: {len(result['sections'])}")
+    #     print(f"\nContent:")
+    #     print(result['content'])
+    #     print(f"\nSections:")
+    #     for i, section in enumerate(result['sections'][:3], 1):
+    #         print(f"  {i}. [{section['level']}] {section['title']}")
+    # else:
+    #     print("Crawling failed!")
+
+    # 테스트 케이스
+    test_cases = [
+        # High Priority
+        ("https://www.dickinson.edu/news/20052/", "high"),
+        ("https://www.dickinson.edu/news", "high"),
+        ("https://www.dickinson.edu/announcements/", "high"),
+        ("https://www.dickinson.edu/events/", "high"),
+        ("https://www.dickinson.edu/admissions/apply", "high"),
+        ("https://www.dickinson.edu/admissions/deadlines", "high"),
+        ("https://dickinson.nutrislice.com/menu", "high"),
+        
+        # Static Priority
+        ("https://www.dickinson.edu/news/article/6260/riding_together_through_teamwork_competition_and_community", "static"),
+        ("https://www.dickinson.edu/events/event/456/homecoming", "static"),
+        ("https://www.dickinson.edu/stories/alumni-success", "static"),
+        ("https://www.dickinson.edu/news/archive", "static"),
+        ("https://www.dickinson.edu/newsletter/2023-fall", "static"),
+        ("https://www.dickinson.edu/dc_faculty_profile/john-smith", "static"),
+        ("https://www.dickinson.edu/campusphotogallery", "static"),
+        ("https://www.dickinson.edu/news/2022/article/123", "static"),
+        ("https://www.dickinson.edu/events/event/30643/cookies_for_kids_cancer", "static"),
+        ("https://archives.dickinson.edu/collections", "static"),
+        
+        # Low Priority
+        ("https://www.dickinson.edu/homepage/536/dickinson_in_the_news", "low"),
+        ("https://www.dickinson.edu/academics/programs/computer-science", "low"),
+        ("https://www.dickinson.edu/campus-life/", "low"),
+        ("https://www.dickinson.edu/admissions/", "low"),
+        ("https://www.dickinson.edu/admissions/financial-aid", "low"),
+        ("https://www.dickinson.edu/about/", "low"),
+        ("https://www.dickinson.edu/contact", "low"),
+        ("https://dickinson.campuslabs.com/engage/organizations", "low"),
+        
+        # Edge Cases (ID 패턴 - Low)
+        ("https://www.dickinson.edu/info/20032/mathematics/1426", "low"),
+        ("https://www.dickinson.edu/homepage/1984/computer_science", "low"),
+        ("https://www.dickinson.edu/homepage/402/curriculum", "low"),
+        
+        # Edge Cases (오탐지 방지)
+        ("https://www.dickinson.edu/fake-news/", "low"),  # 'news' 포함하지만 세그먼트 아님
+        ("https://www.dickinson.edu/student-histories", "low"),  # 'stories' 포함하지만 세그먼트 아님
+        ("https://www.dickinson.edu/monthly-newsletter", "low"),  # 'newsletter' 포함하지만 세그먼트 아님
+        ("https://www.dickinson.edu/events-archive/", "low"),  # 'archive' 포함하지만 세그먼트 아님
+    ]
+    
+    print("\n" + "="*80)
+    print("Priority Determination Tests (priority.txt 기준)")
+    print("="*80)
+    
+    passed = 0
+    failed = 0
+    
+    for url, expected in test_cases:
+        category = extractor._guess_category(url)
+        priority = extractor._determine_priority(url, category)
+        
+        status = "✅" if priority == expected else "❌"
+        if priority == expected:
+            passed += 1
+        else:
+            failed += 1
+        
+        print(f"{status} {priority:8} (expected: {expected:8}) | {url}")
+    
+    print("\n" + "="*80)
+    print(f"Results: {passed} passed, {failed} failed")
+    print("="*80)
